@@ -14,7 +14,7 @@ from einops import rearrange, repeat
 
 from basicsr.archs.vqgan_arch import Encoder, VectorQuantizer, GumbelQuantizer, Generator, ResBlock
 from basicsr.archs.arch_util import flow_warp, resize_flow
-from basicsr.archs.pwcnet_arch import FlowGenerator
+from basicsr.archs.gmflow_arch import FlowGenerator
 from basicsr.utils import get_root_logger
 from basicsr.utils.registry import ARCH_REGISTRY
 
@@ -130,6 +130,24 @@ class TransformerSALayer(nn.Module):
         self.dropout2 = nn.Dropout(dropout)
 
         self.activation = _get_activation_fn(activation)
+        
+        # self.apply(self._init_weights)
+
+    def _init_weights(self, module):
+        if isinstance(module, nn.MultiheadAttention):
+            nn.init.xavier_uniform_(module.in_proj_weight)
+            nn.init.xavier_uniform_(module.out_proj.weight)
+            if module.in_proj_bias is not None:
+                nn.init.constant_(module.in_proj_bias, 0.)
+                nn.init.constant_(module.out_proj.bias, 0.)
+        elif isinstance(module, nn.Linear):
+            module.weight.data.normal_(mean=0.0, std=0.02)
+            if module.bias is not None:
+                module.bias.data.zero_()
+        elif isinstance(module, nn.LayerNorm):
+            module.bias.data.zero_()
+            module.weight.data.fill_(1.0)
+
 
     def with_pos_embed(self, tensor, pos: Optional[Tensor]):
         return tensor if pos is None else tensor + pos
@@ -227,8 +245,8 @@ class CrossFrameFusionLayer(nn.Module):
             if module.bias is not None:
                 module.bias.data.zero_()
         elif isinstance(module, nn.LayerNorm):
-            module.bias.data.zero_()
             module.weight.data.fill_(1.0)
+            module.bias.data.zero_()
 
     def forward(self, curr_states, prev_states, residual=True):
         B, C, H, W = curr_states.shape
@@ -485,6 +503,22 @@ class KalmanFilter(nn.Module):
             nn.Sigmoid()
         )
 
+        self.apply(self._init_weights)
+
+    def _init_weights(self, module):
+        if isinstance(module, nn.Conv2d):
+            nn.init.kaiming_normal_(module.weight)
+            if module.bias is not None:
+                module.bias.data.zero_()
+        elif isinstance(module, (nn.Linear, nn.Embedding)):
+            module.weight.data.normal_(mean=0.0, std=0.02)
+            if isinstance(module, nn.Linear) and module.bias is not None:
+                module.bias.data.zero_()
+        elif isinstance(module, nn.LayerNorm):
+            module.bias.data.zero_()
+            module.weight.data.fill_(1.0)
+
+
     def predict(self, z_hat, flow):
         # Predict the next state based on the current state and flow (if available)
         flow = rearrange(flow, "n c h w -> n h w c")
@@ -519,22 +553,58 @@ class KalmanFilter(nn.Module):
         return w_codes
 
 
+def load_vqgan_checkpoint(model, vqgan_path, logger=None):
+    """Load VQGAN checkpoint into model components.
+    
+    Args:
+        model: The model to load weights into
+        vqgan_path (str): Path to the VQGAN checkpoint
+        logger: Logger instance
+    """
+    if logger is None:
+        logger = get_root_logger()
+        
+    # Load VQGAN checkpoint, load params_ema or params
+    ckpt = torch.load(vqgan_path, map_location='cpu', weights_only=True)
+    if 'params_ema' in ckpt:
+        state_dict = ckpt['params_ema']
+        logger.info(f'Loading VQGAN from: {vqgan_path} [params_ema]')
+    elif 'params' in ckpt:
+        state_dict = ckpt['params']
+        logger.info(f'Loading VQGAN from: {vqgan_path} [params]')
+    else:
+        raise ValueError(f'Wrong params in checkpoint: {vqgan_path}')
+    
+    # Load encoder weights into both encoders
+    encoder_state_dict = {k.split('encoder.')[-1]: v for k, v in state_dict.items() if k.startswith('encoder.')}
+    model.encoder.load_state_dict(encoder_state_dict, strict=True)
+    model.hq_encoder.load_state_dict(encoder_state_dict, strict=True)
+    
+    # Load quantizer weights
+    quantizer_state_dict = {k.split('quantize.')[-1]: v for k, v in state_dict.items() if k.startswith('quantize.')}
+    model.quantize.load_state_dict(quantizer_state_dict, strict=True)
+    
+    # Load generator weights 
+    generator_state_dict = {k.split('generator.')[-1]: v for k, v in state_dict.items() if k.startswith('generator.')}
+    model.generator.load_state_dict(generator_state_dict, strict=True)
+
+
 @ARCH_REGISTRY.register()
 class KEEP(nn.Module):
     def __init__(self, img_size=512, nf=64, ch_mult=[1, 2, 2, 4, 4, 8], quantizer_type="nearest",
                  res_blocks=2, attn_resolutions=[16], codebook_size=1024, emb_dim=256,
                  beta=0.25, gumbel_straight_through=False, gumbel_kl_weight=1e-8, vqgan_path=None,
                  dim_embd=512, n_head=8, n_layers=9, latent_size=256,
-                 connect_list=['32', '64', '128', '256'], fix_modules=['quantize', 'generator'],
-                 flow_type='pwc', flownet_path=None, kalman_attn_head_dim=64, num_uncertainty_layers=4,
-                 cond=1, cross_fuse_list=[], cross_fuse_nhead=4, cross_fuse_dim=256,
-                 cross_fuse_nlayers=4, cross_residual=True,
+                 cft_list=['32', '64', '128', '256'], fix_modules=['quantize', 'generator'],
+                 flownet_path=None, kalman_attn_head_dim=64, num_uncertainty_layers=4,
+                 cond=1, cfa_list=[], cfa_nhead=4, cfa_dim=256,
+                 cfa_nlayers=4, cross_residual=True,
                  temp_reg_list=[], mask_ratio=0.):
         super().__init__()
 
         self.cond = cond
-        self.connect_list = connect_list
-        self.cross_fuse_list = cross_fuse_list
+        self.cft_list = cft_list
+        self.cfa_list = cfa_list
         self.temp_reg_list = temp_reg_list
         self.use_residual = cross_residual
         self.mask_ratio = mask_ratio
@@ -542,13 +612,7 @@ class KEEP(nn.Module):
         logger = get_root_logger()
 
         # alignment
-        # assert flownet_path != None, "Missing path to load pre-trained flow net."
-        if flow_type == 'pwc':
-            from basicsr.archs.pwcnet_arch import FlowGenerator
-            self.flownet = FlowGenerator(path=flownet_path)
-        elif flow_type == 'gmflow':
-            from basicsr.archs.gmflow_arch import FlowGenerator
-            self.flownet = FlowGenerator(path=flownet_path)
+        self.flownet = FlowGenerator(path=flownet_path)
 
         # Kalman Filter
         self.kalman_filter = KalmanFilter(
@@ -558,7 +622,8 @@ class KEEP(nn.Module):
             num_uncertainty_layers=num_uncertainty_layers,
         )
 
-        self.hq_encoder = Encoder(
+        # Create encoders with same architecture
+        encoder_config = dict(
             in_channels=3,
             nf=nf,
             emb_dim=emb_dim,
@@ -567,23 +632,18 @@ class KEEP(nn.Module):
             resolution=img_size,
             attn_resolutions=attn_resolutions
         )
+        
+        self.hq_encoder = Encoder(**encoder_config)
+        self.encoder = Encoder(**encoder_config)
 
-        # VQGAN
-        self.encoder = Encoder(
-            in_channels=3,
-            nf=nf,
-            emb_dim=emb_dim,
-            ch_mult=ch_mult,
-            num_res_blocks=res_blocks,
-            resolution=img_size,
-            attn_resolutions=attn_resolutions
-        )
+        # VQGAN components
         if quantizer_type == "nearest":
             self.quantize = VectorQuantizer(codebook_size, emb_dim, beta)
         elif quantizer_type == "gumbel":
             self.quantize = GumbelQuantizer(
                 codebook_size, emb_dim, emb_dim, gumbel_straight_through, gumbel_kl_weight
             )
+            
         self.generator = Generator(
             nf=nf,
             emb_dim=emb_dim,
@@ -593,18 +653,9 @@ class KEEP(nn.Module):
             attn_resolutions=attn_resolutions
         )
 
+        # Load VQGAN checkpoint if provided
         if vqgan_path is not None:
-            ckpt = torch.load(vqgan_path, map_location='cpu')
-            if 'params_ema' in ckpt:
-                self.load_state_dict(torch.load(
-                    vqgan_path, map_location='cpu')['params_ema'], strict=False)
-                logger.info(f'vqgan is loaded from: {vqgan_path} [params_ema]')
-            elif 'params' in ckpt:
-                self.load_state_dict(torch.load(
-                    vqgan_path, map_location='cpu')['params'], strict=False)
-                logger.info(f'vqgan is loaded from: {vqgan_path} [params]')
-            else:
-                raise ValueError(f'Wrong params!')
+            load_vqgan_checkpoint(self, vqgan_path, logger)
 
         self.position_emb = nn.Parameter(torch.zeros(latent_size, dim_embd))
         self.feat_emb = nn.Linear(emb_dim, dim_embd)
@@ -628,39 +679,31 @@ class KEEP(nn.Module):
         }
 
         # after second residual block for > 16, before attn layer for ==16
-        self.fuse_encoder_block = {'512': 2, '256': 5,
-                                   '128': 8, '64': 11, '32': 14, '16': 18}
+        self.fuse_encoder_block = {
+            '512': 2, '256': 5, '128': 8, '64': 11, '32': 14, '16': 18}
         # after first residual block for > 16, before attn layer for ==16
         self.fuse_generator_block = {
             '16': 6, '32': 9, '64': 12, '128': 15, '256': 18, '512': 21}
 
         # cross frame attention fusion
-        self.cross_fuse = nn.ModuleDict()
-        for f_size in self.cross_fuse_list:
+        self.cfa = nn.ModuleDict()
+        for f_size in self.cfa_list:
             in_ch = self.channels[f_size]
-            self.cross_fuse[f_size] = CrossFrameFusionLayer(dim=in_ch,
-                                                            num_attention_heads=cross_fuse_nhead,
-                                                            attention_head_dim=cross_fuse_dim)
+            self.cfa[f_size] = CrossFrameFusionLayer(dim=in_ch,
+                                                     num_attention_heads=cfa_nhead,
+                                                     attention_head_dim=cfa_dim)
 
-        # fuse_convs_dict
-        self.fuse_convs_dict = nn.ModuleDict()
-        for f_size in self.connect_list:
+        # Controllable Feature Transformation (CFT)
+        self.cft = nn.ModuleDict()
+        for f_size in self.cft_list:
             in_ch = self.channels[f_size]
-            self.fuse_convs_dict[f_size] = Fuse_sft_block(in_ch, in_ch)
+            self.cft[f_size] = Fuse_sft_block(in_ch, in_ch)
 
         if fix_modules is not None:
             for module in fix_modules:
                 for param in getattr(self, module).parameters():
                     param.requires_grad = False
 
-    def _init_weights(self, module):
-        if isinstance(module, (nn.Linear, nn.Embedding)):
-            module.weight.data.normal_(mean=0.0, std=0.02)
-            if isinstance(module, nn.Linear) and module.bias is not None:
-                module.bias.data.zero_()
-        elif isinstance(module, nn.LayerNorm):
-            module.bias.data.zero_()
-            module.weight.data.fill_(1.0)
 
     def get_flow(self, x):
         b, t, c, h, w = x.size()
@@ -719,11 +762,11 @@ class KEEP(nn.Module):
         x = x.reshape(-1, c, h, w)
         enc_feat_dict = {}
         out_list = [self.fuse_encoder_block[f_size]
-                    for f_size in self.connect_list]
+                    for f_size in self.cft_list]
         for i, block in enumerate(self.encoder.blocks):
             x = block(x)
             if i in out_list:
-                enc_feat_dict[str(x.shape[-1])] = x.detach()
+                enc_feat_dict[str(x.shape[-1])] = rearrange(x, "(b f) c h w -> b f c h w", f=t).detach()
 
         lq_feat = x
 
@@ -739,37 +782,29 @@ class KEEP(nn.Module):
         cross_prev_feat = {}
         gen_feat_dict = defaultdict(list)
 
-        fuse_list = [self.fuse_generator_block[f_size]
-                     for f_size in self.connect_list]
+        cft_list = [self.fuse_generator_block[f_size]
+                     for f_size in self.cft_list]
 
-        cross_fuse_list = [self.fuse_generator_block[f_size]
-                           for f_size in self.cross_fuse_list]
+        cfa_list = [self.fuse_generator_block[f_size]
+                    for f_size in self.cfa_list]
 
         temp_reg_list = [self.fuse_generator_block[f_size]
-                         for f_size in self.temp_reg_list]
+                    for f_size in self.temp_reg_list]
 
         for i in range(video_length):
             # print(f'Frame {i} ...')
             if i == 0:
                 z_hat = z_codes[:, i, ...]
-                # gpu_tracker.track()
             else:
-                # gpu_tracker.track(f'Before {i}-frame Kalman Filter')
                 z_prime = self.hq_encoder(
                     self.kalman_filter.predict(prev_out.detach(), flows[:, i-1, ...]))
                 z_hat = self.kalman_filter.update(
                     z_codes[:, i, ...], z_prime, gains[:, i, ...])
-                # z_hat = z_codes[:, i, ...]
-                # gpu_tracker.track(f'After {i}-frame Kalman Filter')
-                # del z_prime
-                # torch.cuda.empty_cache()
 
             # ################# Transformer ###################
             pos_emb = self.position_emb.unsqueeze(1).repeat(1, b, 1)
             # BCHW -> BC(HW) -> (HW)BC
-            # pdb.set_trace()
             query_emb = self.feat_emb(z_hat.flatten(2).permute(2, 0, 1))
-            # print(pos_emb.shape, query_emb.shape)
             for layer in self.ft_layers:
                 query_emb = layer(query_emb, query_pos=pos_emb)
 
@@ -790,7 +825,7 @@ class KEEP(nn.Module):
                 quant_feat = quant_feat.detach()
             else:
                 # preserve gradients for stage II
-                quant_feat = z_hat + (quant_feat - z_hat).detach()
+                quant_feat = query_emb + (quant_feat - query_emb).detach()
 
             # ################## Generator ####################
             x = quant_feat
@@ -798,12 +833,13 @@ class KEEP(nn.Module):
             for j, block in enumerate(self.generator.blocks):
                 x = block(x)
 
-                if j in fuse_list:  # fuse after i-th block
+                if j in cft_list:  # fuse after i-th block
                     f_size = str(x.shape[-1])
-                    x = self.fuse_convs_dict[f_size](
-                        enc_feat_dict[f_size][i: i+1, ...], x, self.cond)
+                    # pdb.set_trace()
+                    x = self.cft[f_size](
+                        enc_feat_dict[f_size][:, i, ...], x, self.cond)
 
-                if j in cross_fuse_list:
+                if j in cfa_list:
                     f_size = str(x.shape[-1])
 
                     if i == 0:
@@ -812,7 +848,7 @@ class KEEP(nn.Module):
                     else:
                         # pdb.set_trace()
                         prev_fea = cross_prev_feat[f_size]
-                        x = self.cross_fuse[f_size](
+                        x = self.cfa[f_size](
                             x, prev_fea, residual=self.use_residual)
                         cross_prev_feat[f_size] = x
 
@@ -825,6 +861,9 @@ class KEEP(nn.Module):
 
         for f_size, feat in gen_feat_dict.items():
             gen_feat_dict[f_size] = torch.stack(feat, dim=1)  # bfchw
+
+        # Convert defaultdict to regular dict before returning
+        gen_feat_dict = dict(gen_feat_dict)
 
         logits = torch.stack(logits, dim=1)  # b(hw)n -> bf(hw)n
         logits = rearrange(logits, "b f l n -> (b f) l n")
@@ -868,30 +907,21 @@ if __name__ == '__main__':
         n_head=8,
         n_layers=4,
         codebook_size=1024,
-        connect_list=[],
-        fix_modules=['generator', 'quantize', 'flownet', 'fuse_convs_dict', 'hq_encoder',
+        cft_list=[],
+        fix_modules=['generator', 'quantize', 'flownet', 'cft_dict', 'hq_encoder',
                      'encoder', 'feat_emb', 'ft_layers', 'idx_pred_layer'],
-        flow_type='gmflow',
         flownet_path="../../weights/GMFlow/gmflow_sintel-0c07dcb3.pth",
         kalman_attn_head_dim=32,
         num_uncertainty_layers=3,
         cond=0,
-        cross_fuse_list=['32'],
-        cross_fuse_nhead=4,
-        cross_fuse_dim=256,
+        cfa_list=['32'],
+        cfa_nhead=4,
+        cfa_dim=256,
         temp_reg_list=['64'],
     ).cuda()
 
     total_params = sum(map(lambda x: x.numel(), model.parameters()))
     print(f"Total parameters in the model: {total_params / 1e6:.2f} M")
-
-    # print(f"Total parameters in the model: {total_params / 1e6:.2f} G")
-    # for name, params in sub_module_params.items():
-    #     print(f"Parameters in {name}: {params / 1e6:.2f} G")
-    #
-    # ckpt_path = '../../weights/CodeFormer/codeformer_doubleEnc_vqgan800k.pth'
-    # checkpoint = torch.load(ckpt_path)['params_ema']
-    # model.load_state_dict(checkpoint, strict=False)
 
     dummy_input = torch.randn((1, 20, 3, 128, 128)).cuda()
 

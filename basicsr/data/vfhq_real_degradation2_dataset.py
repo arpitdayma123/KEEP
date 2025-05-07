@@ -20,13 +20,14 @@ from torch.utils import data as data
 
 
 @DATASET_REGISTRY.register()
-class VFHQRealDegradationDataset(data.Dataset):
+class SingleVFHQDataset(data.Dataset):
     """Support for blind setting adopted in paper. We excludes the random scale compared to GFPGAN.
 
     This dataset is adopted in BasicVSR.
 
     The degradation order is blur+downsample+noise
 
+    Note that we skip the low quality frames within the VFHQ clip.
     Directly read image by cv2. Generate LR images online.
     NOTE: The specific degradation order is blur-noise-downsample-crf-upsample
 
@@ -51,7 +52,134 @@ class VFHQRealDegradationDataset(data.Dataset):
     """
 
     def __init__(self, opt):
-        super(VFHQRealDegradationDataset, self).__init__()
+        super(SingleVFHQDataset, self).__init__()
+        self.opt = opt
+        self.gt_root = Path(opt['dataroot_gt'])
+        self.normalize = opt.get('normalize', False)
+        self.need_align = opt.get('need_align', False)
+        logger = get_root_logger()
+
+        self.keys = []
+        with open(opt['global_meta_info_file'], 'r') as fin:
+            for line in fin:
+                real_clip_path = '/'.join(line.split('/')[:-1])
+                clip_length = line.split('/')[-1]
+                clip_length = int(clip_length)
+                self.keys.extend(
+                    [f'{real_clip_path}/{clip_length:08d}/{frame_idx:08d}' for frame_idx in range(int(clip_length))])
+        # file client (io backend)
+        self.file_client = None
+        self.io_backend_opt = opt['io_backend']
+        self.is_lmdb = False
+        if self.io_backend_opt['type'] == 'lmdb':
+            self.is_lmdb = True
+            self.io_backend_opt['db_paths'] = [self.gt_root]
+            self.io_backend_opt['client_keys'] = ['gt']
+
+        if self.need_align:
+            self.dataroot_meta_info = opt['dataroot_meta_info']
+            self.face_aligner = FaceAligner(
+                upscale_factor=1,
+                face_size=512,
+                crop_ratio=(1, 1),
+                det_model='retinaface_resnet50',
+                save_ext='png',
+                use_parse=True,)
+
+    def __getitem__(self, index):
+        if self.file_client is None:
+            self.file_client = FileClient(
+                self.io_backend_opt.pop('type'), **self.io_backend_opt)
+
+        key = self.keys[index]
+        real_clip_path = '/'.join(key.split('/')[:-2])
+        clip_length = int(key.split('/')[-2])
+        frame_idx = int(key.split('/')[-1])
+
+        # get the neighboring GT frames
+        flag = real_clip_path.split('/')[0]
+        clip_name = real_clip_path.split('/')[-1]
+
+        paths = sorted(list(scandir(os.path.join(
+            self.gt_root, clip_name))))
+
+        assert len(paths) == clip_length, "Wrong length of frame list"
+
+        img_gt_path = os.path.join(
+            self.gt_root, clip_name, paths[frame_idx])
+        img_bytes = self.file_client.get(img_gt_path, 'gt')
+        img_gt = imfrombytes(img_bytes, float32=True)
+
+        # alignment
+        if self.need_align:
+            clip_info_path = os.path.join(
+                self.dataroot_meta_info, f'{clip_name}.txt')
+            clip_info = []
+            with open(clip_info_path, 'r', encoding='utf-8') as fin:
+                for line in fin:
+                    line = line.strip()
+                    if line.startswith('0'):
+                        clip_info.append(line)
+
+            landmarks_str = clip_info[frame_idx].split(' ')[1:]
+            landmarks = np.array([float(x)
+                                  for x in landmarks_str]).reshape(5, 2)
+            self.face_aligner.clean_all()
+            # align and warp each face
+            img_gt = self.face_aligner.align_single_face(img_gt, landmarks)
+
+        # augmentation - flip, rotate
+        img_gt = augment(img_gt, self.opt['use_flip'], self.opt['use_rot'])
+        img_in = img_gt
+
+        # ------------- end --------------#
+        img_in, img_gt = img2tensor([img_in, img_gt])
+        if self.normalize:
+            normalize(img_in, [0.5, 0.5, 0.5], [0.5, 0.5, 0.5], inplace=True)
+            normalize(img_gt, [0.5, 0.5, 0.5], [0.5, 0.5, 0.5], inplace=True)
+
+        # img_lqs: (t, c, h, w)
+        # img_gts: (t, c, h, w)
+        # key: str
+        return {'in': img_in, 'gt': img_gt, 'key': key}
+
+    def __len__(self):
+        return len(self.keys)
+
+@DATASET_REGISTRY.register()
+class VFHQDataset(data.Dataset):
+    """Support for blind setting adopted in paper. We excludes the random scale compared to GFPGAN.
+
+    This dataset is adopted in BasicVSR.
+
+    The degradation order is blur+downsample+noise
+
+    Note that we skip the low quality frames within the VFHQ clip.
+    Directly read image by cv2. Generate LR images online.
+    NOTE: The specific degradation order is blur-noise-downsample-crf-upsample
+
+    The keys are generated from a meta info txt file.
+
+    Key format: subfolder-name/clip-length/frame-name
+    Key examples: "id00020#t0bbIRgKKzM#00381.txt#000.mp4/00000152/00000000"
+    GT (gt): Ground-Truth;
+    LQ (lq): Low-Quality, e.g., low-resolution/blurry/noisy/compressed frames.
+    Args:
+        opt (dict): Config for train dataset. It contains the following keys:
+            dataroot_gt (str): Data root path for gt.
+            dataroot_clip_meta_info (srt): Data root path for meta info of each gt clip.
+            global_meta_info_file (str): Path for global meta information file.
+            io_backend (dict): IO backend type and other kwarg.
+            num_frame (int): Window size for input frames.
+            interval_list (list): Interval list for temporal augmentation.
+            random_reverse (bool): Random reverse input frames.
+            use_flip (bool): Use horizontal flips.
+            use_rot (bool): Use rotation (use vertical flip and transposing h
+                and w for implementation).
+    """
+
+    def __init__(self, opt):
+        super(VFHQDataset, self).__init__()
         self.opt = opt
         self.gt_root = Path(opt['dataroot_gt'])
 
@@ -280,132 +408,4 @@ class VFHQRealDegradationDataset(data.Dataset):
 
     def __len__(self):
         return len(self.keys)
-
-
-@DATASET_REGISTRY.register()
-class SingleVFHQDataset(data.Dataset):
-    """Support for blind setting adopted in paper. We excludes the random scale compared to GFPGAN.
-
-    This dataset is adopted in BasicVSR.
-
-    The degradation order is blur+downsample+noise
-
-    Note that we skip the low quality frames within the VFHQ clip.
-    Directly read image by cv2. Generate LR images online.
-    NOTE: The specific degradation order is blur-noise-downsample-crf-upsample
-
-    The keys are generated from a meta info txt file.
-
-    Key format: subfolder-name/clip-length/frame-name
-    Key examples: "id00020#t0bbIRgKKzM#00381.txt#000.mp4/00000152/00000000"
-    GT (gt): Ground-Truth;
-    LQ (lq): Low-Quality, e.g., low-resolution/blurry/noisy/compressed frames.
-    Args:
-        opt (dict): Config for train dataset. It contains the following keys:
-            dataroot_gt (str): Data root path for gt.
-            dataroot_clip_meta_info (srt): Data root path for meta info of each gt clip.
-            global_meta_info_file (str): Path for global meta information file.
-            io_backend (dict): IO backend type and other kwarg.
-            num_frame (int): Window size for input frames.
-            interval_list (list): Interval list for temporal augmentation.
-            random_reverse (bool): Random reverse input frames.
-            use_flip (bool): Use horizontal flips.
-            use_rot (bool): Use rotation (use vertical flip and transposing h
-                and w for implementation).
-    """
-
-    def __init__(self, opt):
-        super(SingleVFHQDataset, self).__init__()
-        self.opt = opt
-        self.gt_root = Path(opt['dataroot_gt'])
-        self.normalize = opt.get('normalize', False)
-        self.need_align = opt.get('need_align', False)
-        logger = get_root_logger()
-
-        self.keys = []
-        with open(opt['global_meta_info_file'], 'r') as fin:
-            for line in fin:
-                real_clip_path = '/'.join(line.split('/')[:-1])
-                clip_length = line.split('/')[-1]
-                clip_length = int(clip_length)
-                self.keys.extend(
-                    [f'{real_clip_path}/{clip_length:08d}/{frame_idx:08d}' for frame_idx in range(int(clip_length))])
-        # file client (io backend)
-        self.file_client = None
-        self.io_backend_opt = opt['io_backend']
-        self.is_lmdb = False
-        if self.io_backend_opt['type'] == 'lmdb':
-            self.is_lmdb = True
-            self.io_backend_opt['db_paths'] = [self.gt_root]
-            self.io_backend_opt['client_keys'] = ['gt']
-
-        if self.need_align:
-            self.dataroot_meta_info = opt['dataroot_meta_info']
-            self.face_aligner = FaceAligner(
-                upscale_factor=1,
-                face_size=512,
-                crop_ratio=(1, 1),
-                det_model='retinaface_resnet50',
-                save_ext='png',
-                use_parse=True,)
-
-    def __getitem__(self, index):
-        if self.file_client is None:
-            self.file_client = FileClient(
-                self.io_backend_opt.pop('type'), **self.io_backend_opt)
-
-        key = self.keys[index]
-        real_clip_path = '/'.join(key.split('/')[:-2])
-        clip_length = int(key.split('/')[-2])
-        frame_idx = int(key.split('/')[-1])
-
-        # get the neighboring GT frames
-        flag = real_clip_path.split('/')[0]
-        clip_name = real_clip_path.split('/')[-1]
-
-        paths = sorted(list(scandir(os.path.join(
-            self.gt_root, clip_name))))
-
-        assert len(paths) == clip_length, "Wrong length of frame list"
-
-        img_gt_path = os.path.join(
-            self.gt_root, clip_name, paths[frame_idx])
-        img_bytes = self.file_client.get(img_gt_path, 'gt')
-        img_gt = imfrombytes(img_bytes, float32=True)
-
-        # alignment
-        if self.need_align:
-            clip_info_path = os.path.join(
-                self.dataroot_meta_info, f'{clip_name}.txt')
-            clip_info = []
-            with open(clip_info_path, 'r', encoding='utf-8') as fin:
-                for line in fin:
-                    line = line.strip()
-                    if line.startswith('0'):
-                        clip_info.append(line)
-
-            landmarks_str = clip_info[frame_idx].split(' ')[1:]
-            landmarks = np.array([float(x)
-                                  for x in landmarks_str]).reshape(5, 2)
-            self.face_aligner.clean_all()
-            # align and warp each face
-            img_gt = self.face_aligner.align_single_face(img_gt, landmarks)
-
-        # augmentation - flip, rotate
-        img_gt = augment(img_gt, self.opt['use_flip'], self.opt['use_rot'])
-        img_in = img_gt
-
-        # ------------- end --------------#
-        img_in, img_gt = img2tensor([img_in, img_gt])
-        if self.normalize:
-            normalize(img_in, [0.5, 0.5, 0.5], [0.5, 0.5, 0.5], inplace=True)
-            normalize(img_gt, [0.5, 0.5, 0.5], [0.5, 0.5, 0.5], inplace=True)
-
-        # img_lqs: (t, c, h, w)
-        # img_gts: (t, c, h, w)
-        # key: str
-        return {'in': img_in, 'gt': img_gt, 'key': key}
-
-    def __len__(self):
-        return len(self.keys)
-
+        

@@ -9,7 +9,7 @@ def update_sha(paths):
     print('# Update sha ...')
     for idx, path in enumerate(paths):
         print(f'{idx+1:03d}: Processing {path}')
-        net = torch.load(path, map_location=torch.device('cpu'))
+        net = torch.load(path, map_location=torch.device('cpu'), weights_only=True)
         basename = osp.basename(path)
         if 'params' not in net and 'params_ema' not in net:
             user_response = input(f'WARN: Model {basename} does not have "params"/"params_ema" key. '
@@ -52,7 +52,7 @@ def convert_to_backward_compatible_models(paths):
                 flag_need_conversion = True
 
         if flag_need_conversion:
-            net = torch.load(path, map_location=torch.device('cpu'))
+            net = torch.load(path, map_location=torch.device('cpu'), weights_only=True)
             print('\tConverting to compatible pth file...')
             torch.save(net, path, _use_new_zipfile_serialization=False)
 

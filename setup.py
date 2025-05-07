@@ -6,10 +6,23 @@ import os
 import subprocess
 import sys
 import time
+import torch
+import re
 from torch.utils.cpp_extension import BuildExtension, CppExtension, CUDAExtension
-from utils.misc import gpu_is_available
+# from basicsr.utils.misc import gpu_is_available
 
-version_file = './basicsr/version.py'
+version_file = 'basicsr/version.py'
+
+
+IS_HIGH_VERSION = [int(m) for m in list(re.findall(r"^([0-9]+)\.([0-9]+)\.([0-9]+)([^0-9][a-zA-Z0-9]*)?(\+git.*)?$",
+                                                   torch.__version__)[0][:3])] >= [1, 12, 0]
+
+
+def gpu_is_available():
+    if IS_HIGH_VERSION:
+        if torch.backends.mps.is_available():
+            return True
+    return True if torch.cuda.is_available() and torch.backends.cudnn.is_available() else False
 
 
 def readme():
@@ -66,7 +79,7 @@ __gitsha__ = '{}'
 version_info = ({})
 """
     sha = get_hash()
-    with open('./basicsr/VERSION', 'r') as f:
+    with open('basicsr/VERSION', 'r') as f:
         SHORT_VERSION = f.read().strip()
     VERSION_INFO = ', '.join([x if x.isdigit() else f'"{x}"' for x in SHORT_VERSION.split('.')])
 
@@ -108,7 +121,7 @@ def make_cuda_ext(name, module, sources, sources_cuda=None):
         extra_compile_args=extra_compile_args)
 
 
-def get_requirements(filename='requirements.txt'):
+def get_requirements(filename='./requirements.txt'):
     with open(os.path.join('.', filename), 'r') as f:
         requires = [line.replace('\n', '') for line in f.readlines()]
     return requires
@@ -119,17 +132,17 @@ if __name__ == '__main__':
         ext_modules = [
             make_cuda_ext(
                 name='deform_conv_ext',
-                module='ops.dcn',
+                module='basicsr.ops.dcn',
                 sources=['src/deform_conv_ext.cpp'],
                 sources_cuda=['src/deform_conv_cuda.cpp', 'src/deform_conv_cuda_kernel.cu']),
             make_cuda_ext(
                 name='fused_act_ext',
-                module='ops.fused_act',
+                module='basicsr.ops.fused_act',
                 sources=['src/fused_bias_act.cpp'],
                 sources_cuda=['src/fused_bias_act_kernel.cu']),
             make_cuda_ext(
                 name='upfirdn2d_ext',
-                module='ops.upfirdn2d',
+                module='basicsr.ops.upfirdn2d',
                 sources=['src/upfirdn2d.cpp'],
                 sources_cuda=['src/upfirdn2d_kernel.cu']),
         ]

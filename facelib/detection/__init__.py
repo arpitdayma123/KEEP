@@ -33,7 +33,7 @@ def init_retinaface_model(model_name, half=False, device='cuda'):
         raise NotImplementedError(f'{model_name} is not implemented.')
 
     model_path = load_file_from_url(url=model_url, model_dir='weights/facelib', progress=True, file_name=None)
-    load_net = torch.load(model_path, map_location=lambda storage, loc: storage)
+    load_net = torch.load(model_path, map_location=lambda storage, loc: storage, weights_only=True)
     # remove unnecessary 'module.'
     for k, v in deepcopy(load_net).items():
         if k.startswith('module.'):
@@ -57,7 +57,7 @@ def init_yolov5face_model(model_name, device='cuda'):
         raise NotImplementedError(f'{model_name} is not implemented.')
     
     model_path = load_file_from_url(url=model_url, model_dir='weights/facelib', progress=True, file_name=None)
-    load_net = torch.load(model_path, map_location=lambda storage, loc: storage)
+    load_net = torch.load(model_path, map_location=lambda storage, loc: storage, weights_only=True)
     model.detector.load_state_dict(load_net, strict=True)
     model.detector.eval()
     model.detector = model.detector.to(device).float()

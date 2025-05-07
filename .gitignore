@@ -125,6 +125,10 @@ venv.bak/
 results/
 experiments/
 tb_logger/
+build/
+
 run.sh
 *debug*
 *_old*
+
+*.swp

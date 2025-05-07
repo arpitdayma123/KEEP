@@ -78,7 +78,7 @@ if __name__ == '__main__':
     device = get_device()
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('-i', '--input_path', type=str, default='../dataset/real_LQ/',
+    parser.add_argument('-i', '--input_path', type=str, default='assets/examples/real_1.mp4',
                         help='Input image, video or folder. Default: inputs/whole_imgs')
     parser.add_argument('-o', '--output_path', type=str, default='results/',
                         help='Output folder. Default: results/')
@@ -107,11 +107,52 @@ if __name__ == '__main__':
                         help='Tile size for background sampler. Default: 400')
     parser.add_argument('--suffix', type=str, default=None,
                         help='Suffix of the restored faces. Default: None')
-    parser.add_argument('--save_video_fps', type=float, default=20,
-                        help='Frame rate for saving video. Default: 20')
+    parser.add_argument('--save_video_fps', type=float, default=15,
+                        help='Frame rate for saving video. Default: 15')
+    parser.add_argument('--model_type', type=str, default='VFHQ',
+                        help='Model type to use. Options: VFHQ, Asian. Default: VFHQ')
 
     args = parser.parse_args()
-    input_video = False
+
+    # Model configurations
+    model_configs = {
+        'VFHQ': {
+            'architecture': {
+                'img_size': 512,
+                'emb_dim': 256,
+                'dim_embd': 512,
+                'n_head': 8,
+                'n_layers': 9,
+                'codebook_size': 1024,
+                'cft_list': ['16', '32', '64'],
+                'kalman_attn_head_dim': 48,
+                'num_uncertainty_layers': 3,
+                'cfa_list': ['16', '32'],
+                'cfa_nhead': 4,
+                'cfa_dim': 256,
+                'cond': 1,
+            },
+            'checkpoint_dir': 'weights/KEEP/KEEP-b76feb75.pth'
+        },
+        'Asian': {
+            'architecture': {
+                'img_size': 512,
+                'emb_dim': 256,
+                'dim_embd': 512,
+                'n_head': 8,
+                'n_layers': 9,
+                'codebook_size': 1024,
+                'cft_list': ['32', '64', '128', '256'],
+                'kalman_attn_head_dim': 48,
+                'num_uncertainty_layers': 3,
+                'cfa_list': ['16', '32'],
+                'cfa_nhead': 4,
+                'cfa_dim': 256,
+                'cond': 1,
+            },
+            'checkpoint_dir': 'weights/KEEP/KEEP_Asian-4765ebe0.pth'
+        }
+    }
 
     # ------------------ set up background upsampler ------------------
     if args.bg_upsampler == 'realesrgan':
@@ -129,20 +170,20 @@ if __name__ == '__main__':
         face_upsampler = None
 
     # ------------------ set up restorer -------------------
-    net = ARCH_REGISTRY.get('KEEP')(img_size=512, emb_dim=256, dim_embd=512,
-                    n_head=8, n_layers=9, codebook_size=1024, connect_list=['16', '32', '64'],
-                    flow_type='gmflow', flownet_path=None,
-                    kalman_attn_head_dim=48, num_uncertainty_layers=3, cross_fuse_list=['16', '32'],
-                    cross_fuse_nhead=4, cross_fuse_dim=256).to(device)
+    if args.model_type not in model_configs:
+        raise ValueError(f"Unknown model type: {args.model_type}. Available options: {list(model_configs.keys())}")
 
-    # ckpt_path = 'weights/KEEP/KEEP-a1a14d46.pth'
-    # checkpoint = torch.load(ckpt_path)['params_ema']
+    config = model_configs[args.model_type]
+    net = ARCH_REGISTRY.get('KEEP')(**config['architecture']).to(device)
 
-    ckpt_path = load_file_from_url(
-        url='https://github.com/jnjaby/KEEP/releases/download/v0.1.0/KEEP-a1a14d46.pth',
-        model_dir='weights/KEEP', progress=True, file_name=None)
-    checkpoint = torch.load(ckpt_path)
-    net.load_state_dict(checkpoint)
+    # ckpt_path = load_file_from_url(
+    #     url=config['checkpoint_url'],
+    #     model_dir=config['checkpoint_dir'],
+    #     progress=True,
+    #     file_name=None)
+    checkpoint = torch.load(config['checkpoint_dir'], weights_only=True)
+    net.load_state_dict(checkpoint['params_ema'])
+    
     net.eval()
 
     # ------------------ set up FaceRestoreHelper -------------------

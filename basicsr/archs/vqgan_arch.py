@@ -392,14 +392,12 @@ class VQAutoEncoder(nn.Module):
         )
 
         if model_path is not None:
-            chkpt = torch.load(model_path, map_location='cpu')
-            if 'params_ema' in chkpt:
-                self.load_state_dict(torch.load(
-                    model_path, map_location='cpu')['params_ema'])
+            ckpt = torch.load(model_path, map_location='cpu', weights_only=True)
+            if 'params_ema' in ckpt:
+                self.load_state_dict(ckpt['params_ema'])
                 logger.info(f'vqgan is loaded from: {model_path} [params_ema]')
-            elif 'params' in chkpt:
-                self.load_state_dict(torch.load(
-                    model_path, map_location='cpu')['params'])
+            elif 'params' in ckpt:
+                self.load_state_dict(ckpt['params'])
                 logger.info(f'vqgan is loaded from: {model_path} [params]')
             else:
                 raise ValueError(f'Wrong params!')
@@ -446,13 +444,11 @@ class VQGANDiscriminator(nn.Module):
         self.main = nn.Sequential(*layers)
 
         if model_path is not None:
-            chkpt = torch.load(model_path, map_location='cpu')
+            ckpt = torch.load(model_path, map_location='cpu')
             if 'params_d' in chkpt:
-                self.load_state_dict(torch.load(
-                    model_path, map_location='cpu')['params_d'])
+                self.load_state_dict(ckpt['params_d'])
             elif 'params' in chkpt:
-                self.load_state_dict(torch.load(
-                    model_path, map_location='cpu')['params'])
+                self.load_state_dict(ckpt['params'])
             else:
                 raise ValueError(f'Wrong params!')
 
@@ -502,7 +498,7 @@ class VQHQEncoder(nn.Module):
 
         if model_path is not None:
             self.load_state_dict(torch.load(
-                model_path, map_location='cpu')[params], strict=False)
+                model_path, map_location='cpu', weights_only=True)[params], strict=False)
             logger.info(
                 f'VQGAN for latent calculation is loaded from: {model_path} [{params}]')
 
