@@ -55,8 +55,7 @@ def set_realesrgan():
     )
     upsampler = RealESRGANer(
         scale=2,
-        model_path="https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/RealESRGAN_x2plus.pth",
-        # model_path="https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth",
+        model_path="https://github.com/jnjaby/KEEP/releases/download/v0.1.0/RealESRGAN_x2plus.pth",
         model=model,
         tile=args.bg_tile,
         tile_pad=40,
