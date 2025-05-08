@@ -908,7 +908,7 @@ if __name__ == '__main__':
         n_layers=4,
         codebook_size=1024,
         cft_list=[],
-        fix_modules=['generator', 'quantize', 'flownet', 'cft_dict', 'hq_encoder',
+        fix_modules=['generator', 'quantize', 'flownet', 'cft', 'hq_encoder',
                      'encoder', 'feat_emb', 'ft_layers', 'idx_pred_layer'],
         flownet_path="../../weights/GMFlow/gmflow_sintel-0c07dcb3.pth",
         kalman_attn_head_dim=32,

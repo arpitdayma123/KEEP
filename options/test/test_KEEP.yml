@@ -1,0 +1,63 @@
+name: test_KEEP
+model_type: KEEP
+scale: 4
+num_gpu: 1  # set num_gpu: 0 for cpu mode
+manual_seed: 0
+
+datasets:
+  test_1:
+    name: vfhq_easy
+    type: VideoRecurrentTestDataset
+    dataroot_gt: /mnt/sfs-common/rcfeng/video_face/VFHQ-Test/GT/Interval1_512x512_LANCZOS4
+    dataroot_lq: /mnt/sfs-common/rcfeng/video_face/VFHQ-Test/Blind-LR/BlindLR_128x128_easy_Blur5-10_Noise0-10_CRF18-25
+    global_meta_info_file: /mnt/sfs-common/rcfeng/video_face/VFHQ-Test/GT/global_meta_info.txt
+    need_align: true
+    normalize: true
+    dataroot_meta_info: /mnt/sfs-common/rcfeng/video_face/VFHQ-Test/meta_info
+    io_backend:
+      type: disk
+    cache_data: false
+    num_frame: 20
+    padding: reflection_circle
+    interval: 1
+
+# network structures
+network_g:
+  type: KEEP
+  img_size: 512
+  nf: 64
+  emb_dim: 256
+  dim_embd: 512
+  n_head: 8
+  n_layers: 9
+  codebook_size: 1024
+  ch_mult: [1, 2, 2, 4, 4, 8]
+  cft_list: ['16', '32', '64']
+  fix_modules: ['generator', 'quantize', 'flownet', 'hq_encoder', 'kalman_filter',
+                'encoder', 'feat_emb', 'ft_layers', 'idx_pred_layer']
+  flownet_path: weights/GMFlow/gmflow_sintel-0c07dcb3.pth
+  kalman_attn_head_dim: 48
+  num_uncertainty_layers: 3
+  cond: 1
+  cfa_list: ['16', '32']
+  cfa_nhead: 4
+  cfa_dim: 256
+  temp_reg_list: ['32']
+
+# path
+path:
+  pretrain_network_g: experiments/stage3_KEEP/models/net_g_latest.pth
+  strict_load_g: true
+  param_key_g: params_ema
+
+# validation settings
+val:
+  save_img: true
+  save_video: true
+  suffix: ~  # add suffix to saved images, if None, use exp name
+
+  metrics:
+    psnr: # metric name, can be arbitrary
+      type: calculate_psnr
+      crop_border: 0
+      test_y_channel: false

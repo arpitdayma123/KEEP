@@ -74,7 +74,7 @@ network_g:
   ch_mult: [1, 2, 2, 4, 4, 8]
   cft_list: []
   cfa_list: []
-  fix_modules: ['generator', 'quantize', 'flownet', 'cft_dict', 'hq_encoder']
+  fix_modules: ['generator', 'quantize', 'flownet', 'cft', 'hq_encoder']
   flownet_path: weights/GMFlow/gmflow_sintel-0c07dcb3.pth
   kalman_attn_head_dim: 48
   num_uncertainty_layers: 3

@@ -109,14 +109,14 @@ if __name__ == '__main__':
                         help='Suffix of the restored faces. Default: None')
     parser.add_argument('--save_video_fps', type=float, default=15,
                         help='Frame rate for saving video. Default: 15')
-    parser.add_argument('--model_type', type=str, default='VFHQ',
-                        help='Model type to use. Options: VFHQ, Asian. Default: VFHQ')
+    parser.add_argument('--model_type', type=str, default='KEEP',
+                        help='Model type to use. Options: KEEP, Asian. Default: KEEP')
 
     args = parser.parse_args()
 
     # Model configurations
     model_configs = {
-        'VFHQ': {
+        'KEEP': {
             'architecture': {
                 'img_size': 512,
                 'emb_dim': 256,
