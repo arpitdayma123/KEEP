@@ -131,7 +131,8 @@ if __name__ == '__main__':
                 'cfa_dim': 256,
                 'cond': 1,
             },
-            'checkpoint_dir': 'weights/KEEP/KEEP-b76feb75.pth'
+            'checkpoint_dir': 'weights/KEEP/KEEP-b76feb75.pth',
+            'checkpoint_url': 'https://github.com/jnjaby/HTX_Face_VSR/releases/download/v1.0.0/KEEP-b76feb75.pth'
         },
         'Asian': {
             'architecture': {
@@ -149,7 +150,8 @@ if __name__ == '__main__':
                 'cfa_dim': 256,
                 'cond': 1,
             },
-            'checkpoint_dir': 'weights/KEEP/KEEP_Asian-4765ebe0.pth'
+            'checkpoint_dir': 'weights/KEEP/KEEP_Asian-4765ebe0.pth',
+            'checkpoint_url': 'https://github.com/jnjaby/HTX_Face_VSR/releases/download/v1.0.0/KEEP_Asian-4765ebe0.pth'
         }
     }
 
@@ -175,12 +177,12 @@ if __name__ == '__main__':
     config = model_configs[args.model_type]
     net = ARCH_REGISTRY.get('KEEP')(**config['architecture']).to(device)
 
-    # ckpt_path = load_file_from_url(
-    #     url=config['checkpoint_url'],
-    #     model_dir=config['checkpoint_dir'],
-    #     progress=True,
-    #     file_name=None)
-    checkpoint = torch.load(config['checkpoint_dir'], weights_only=True)
+    ckpt_path = load_file_from_url(
+        url=config['checkpoint_url'],
+        model_dir=config['checkpoint_dir'],
+        progress=True,
+        file_name=None)
+    checkpoint = torch.load(ckpt_path, weights_only=True)
     net.load_state_dict(checkpoint['params_ema'])
     
     net.eval()
