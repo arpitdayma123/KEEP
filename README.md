@@ -108,6 +108,26 @@ python inference_keep.py -i=./assets/examples/synthetic_1.mp4 -o=results/ --has_
 python inference_keep.py -i=./assets/examples/real_1.mp4 -o=results/ --draw_box --save_video -s=1 --bg_upsampler=realesrgan
 ```
 
+## Training
+
+To train your own model, this repo follows a three-stage training process.
+
+First, train a VQGAN.
+```
+python -u basicsr/train.py -opt options/train/stage1_VQGAN.yml --launcher="slurm"
+```
+
+Then, train the main part of KEEP.
+```
+python -u basicsr/train.py -opt options/train/stage2_KEEP.yml --launcher="slurm"
+```
+
+Finally, fine-tune the CFT and CFA.
+```
+python -u basicsr/train.py -opt options/train/stage3_KEEP.yml --launcher="slurm"
+```
+
+
 
 ## Citation
 
