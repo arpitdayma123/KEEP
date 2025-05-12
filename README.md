@@ -8,7 +8,7 @@
 ```
 
 # create new anaconda env
-conda create -n keep python=3.8 -y
+conda create -n keep python=3.10 -y
 conda activate keep
 
 # install python dependencies

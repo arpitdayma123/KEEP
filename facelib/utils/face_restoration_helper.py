@@ -3,7 +3,7 @@ import numpy as np
 import os
 import torch
 import pdb
-import dlib
+# import dlib
 from torchvision.transforms.functional import normalize
 
 from facelib.detection import init_detection_model

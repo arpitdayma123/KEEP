@@ -131,7 +131,7 @@ if __name__ == '__main__':
                 'cfa_dim': 256,
                 'cond': 1,
             },
-            'checkpoint_dir': 'weights/KEEP/KEEP-b76feb75.pth',
+            'checkpoint_dir': 'weights/KEEP',
             'checkpoint_url': 'https://github.com/jnjaby/HTX_Face_VSR/releases/download/v1.0.0/KEEP-b76feb75.pth'
         },
         'Asian': {
@@ -150,7 +150,7 @@ if __name__ == '__main__':
                 'cfa_dim': 256,
                 'cond': 1,
             },
-            'checkpoint_dir': 'weights/KEEP/KEEP_Asian-4765ebe0.pth',
+            'checkpoint_dir': 'weights/KEEP',
             'checkpoint_url': 'https://github.com/jnjaby/HTX_Face_VSR/releases/download/v1.0.0/KEEP_Asian-4765ebe0.pth'
         }
     }

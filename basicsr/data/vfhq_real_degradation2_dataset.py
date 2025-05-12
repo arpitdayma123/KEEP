@@ -360,7 +360,7 @@ class VFHQDataset(data.Dataset):
             for img_lq in img_lqs:
                 img_lq = np.clip(img_lq * 255, 0, 255).astype(np.uint8)
                 frame = av.VideoFrame.from_ndarray(img_lq, format='rgb24')
-                frame.pict_type = 'NONE'
+                frame.pict_type = 0  # Changed from 'NONE' to 0
                 for packet in stream.encode(frame):
                     container.mux(packet)
 
