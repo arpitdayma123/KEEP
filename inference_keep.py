@@ -55,7 +55,7 @@ def set_realesrgan():
     )
     upsampler = RealESRGANer(
         scale=2,
-        model_path="https://github.com/jnjaby/KEEP/releases/download/v0.1.0/RealESRGAN_x2plus.pth",
+        model_path="https://github.com/jnjaby/KEEP/releases/download/v1.0.0/RealESRGAN_x2plus.pth",
         model=model,
         tile=args.bg_tile,
         tile_pad=40,
@@ -132,7 +132,7 @@ if __name__ == '__main__':
                 'cond': 1,
             },
             'checkpoint_dir': 'weights/KEEP',
-            'checkpoint_url': 'https://github.com/jnjaby/HTX_Face_VSR/releases/download/v1.0.0/KEEP-b76feb75.pth'
+            'checkpoint_url': 'https://github.com/jnjaby/KEEP/releases/download/v1.0.0/KEEP-b76feb75.pth'
         },
         'Asian': {
             'architecture': {
@@ -151,7 +151,7 @@ if __name__ == '__main__':
                 'cond': 1,
             },
             'checkpoint_dir': 'weights/KEEP',
-            'checkpoint_url': 'https://github.com/jnjaby/HTX_Face_VSR/releases/download/v1.0.0/KEEP_Asian-4765ebe0.pth'
+            'checkpoint_url': 'https://github.com/jnjaby/KEEP/releases/download/v1.0.0/KEEP_Asian-4765ebe0.pth'
         }
     }
 
