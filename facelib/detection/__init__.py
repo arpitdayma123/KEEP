@@ -25,12 +25,12 @@ def init_detection_model(model_name, half=False, device='cuda'):
 def init_retinaface_model(model_name, half=False, device='cuda'):
     if model_name == 'retinaface_resnet50':
         model = RetinaFace(network_name='resnet50', half=half)
-        model_url = 'https://github.com/jnjaby/KEEP/releases/download/v0.1.0/detection_Resnet50_Final.pth'
+        model_url = 'https://github.com/jnjaby/KEEP/releases/download/v1.0.0/detection_Resnet50_Final.pth'
     elif model_name == 'retinaface_mobile0.25':
         model = RetinaFace(network_name='mobile0.25', half=half)
-        model_url = 'https://github.com/jnjaby/KEEP/releases/download/v0.1.0/detection_mobilenet0.25_Final.pth'
+        model_url = 'https://github.com/jnjaby/KEEP/releases/download/v1.0.0/detection_mobilenet0.25_Final.pth'
     else:
-        raise NotImplementedError(f'{model_name} is not implemented.')
+        raise NotImplementedError(f'{model_name} is not `implemented.')
 
     model_path = load_file_from_url(url=model_url, model_dir='weights/facelib', progress=True, file_name=None)
     load_net = torch.load(model_path, map_location=lambda storage, loc: storage, weights_only=True)
@@ -49,10 +49,10 @@ def init_retinaface_model(model_name, half=False, device='cuda'):
 def init_yolov5face_model(model_name, device='cuda'):
     if model_name == 'YOLOv5l':
         model = YoloDetector(config_name='facelib/detection/yolov5face/models/yolov5l.yaml', device=device)
-        model_url = 'https://github.com/jnjaby/KEEP/releases/download/v0.1.0/yolov5l-face.pth'
+        model_url = 'https://github.com/jnjaby/KEEP/releases/download/v1.0.0/yolov5l-face.pth'
     elif model_name == 'YOLOv5n':
         model = YoloDetector(config_name='facelib/detection/yolov5face/models/yolov5n.yaml', device=device)
-        model_url = 'https://github.com/jnjaby/KEEP/releases/download/v0.1.0/yolov5n-face.pth'
+        model_url = 'https://github.com/jnjaby/KEEP/releases/download/v1.0.0/yolov5n-face.pth'
     else:
         raise NotImplementedError(f'{model_name} is not implemented.')
     

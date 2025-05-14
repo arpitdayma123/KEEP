@@ -13,8 +13,8 @@ from basicsr.utils.download_util import load_file_from_url
 from basicsr.utils.misc import get_device
 
 dlib_model_url = {
-    'face_detector': 'https://github.com/jnjaby/KEEP/releases/download/v0.1.0/mmod_human_face_detector-4cb19393.dat',
-    'shape_predictor_5': 'https://github.com/jnjaby/KEEP/releases/download/v0.1.0/shape_predictor_5_face_landmarks-c4b1e980.dat'
+    'face_detector': 'https://github.com/jnjaby/KEEP/releases/download/v1.0.0/mmod_human_face_detector-4cb19393.dat',
+    'shape_predictor_5': 'https://github.com/jnjaby/KEEP/releases/download/v1.0.0/shape_predictor_5_face_landmarks-c4b1e980.dat'
 }
 
 
