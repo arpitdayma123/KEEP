@@ -41,34 +41,29 @@ RUN mkdir -p checkpoints/keep_models && \
 
 # Download model checkpoints
 # KEEP Models
-RUN wget -O checkpoints/keep_models/KEEP-b76feb75.pth https://github.com/jnjaby/KEEP/releases/download/v1.0.0/KEEP-b76feb75.pth && \
-    wget -O checkpoints/keep_models/KEEP_Asian-4765ebe0.pth https://github.com/jnjaby/KEEP/releases/download/v1.0.0/KEEP_Asian-4765ebe0.pth
+RUN wget --tries=3 -O checkpoints/keep_models/KEEP-b76feb75.pth https://github.com/jnjaby/KEEP/releases/download/v1.0.0/KEEP-b76feb75.pth && \
+    wget --tries=3 -O checkpoints/keep_models/KEEP_Asian-4765ebe0.pth https://github.com/jnjaby/KEEP/releases/download/v1.0.0/KEEP_Asian-4765ebe0.pth
 
 # RealESRGAN Model for background and general upsampling
-RUN wget -O checkpoints/realesrgan_models/RealESRGAN_x2plus.pth https://github.com/jnjaby/KEEP/releases/download/v1.0.0/RealESRGAN_x2plus.pth
+RUN wget --tries=3 -O checkpoints/realesrgan_models/RealESRGAN_x2plus.pth https://github.com/jnjaby/KEEP/releases/download/v1.0.0/RealESRGAN_x2plus.pth
 
 # Face Detection Models (RetinaFace - these are used by FaceRestoreHelper)
-# These will be downloaded by facelib.utils.face_restoration_helper into weights/facelib if not present.
-# For robustness, we download them to the expected facelib location.
-RUN wget -O weights/facelib/detection_Resnet50_Final.pth https://github.com/xinntao/facexlib/releases/download/v0.1.0/detection_Resnet50_Final.pth && \
-    wget -O weights/facelib/detection_mobilenet0.25_Final.pth https://github.com/xinntao/facexlib/releases/download/v0.1.0/detection_mobilenet0.25_Final.pth
+# Updated to use jnjaby/KEEP URLs and download to checkpoints/facelib_models/
+RUN wget --tries=3 -O checkpoints/facelib_models/detection_Resnet50_Final.pth https://github.com/jnjaby/KEEP/releases/download/v1.0.0/detection_Resnet50_Final.pth && \
+    wget --tries=3 -O checkpoints/facelib_models/detection_mobilenet0.25_Final.pth https://github.com/jnjaby/KEEP/releases/download/v1.0.0/detection_mobilenet0.25_Final.pth
 
 # YOLOv5 Face Detection Models (alternative detectors in FaceRestoreHelper)
 # Ensure these paths match what FaceRestoreHelper/YOLOv5Face expects if used,
 # or adjust FaceRestoreHelper to look for them in checkpoints/other_models.
 # For now, downloading to a common place.
-RUN wget -O checkpoints/other_models/yolov5n-face.pth https://github.com/deepcam-cn/yolov5-face/releases/download/v1.0/yolov5n-face.pth && \
-    wget -O checkpoints/other_models/yolov5l-face.pth https://github.com/deepcam-cn/yolov5-face/releases/download/v1.0/yolov5l-face.pth
+RUN wget --tries=3 -O checkpoints/other_models/yolov5n-face.pth https://github.com/jnjaby/KEEP/releases/download/v1.0.0/yolov5n-face.pth && \
+    wget --tries=3 -O checkpoints/other_models/yolov5l-face.pth https://github.com/jnjaby/KEEP/releases/download/v1.0.0/yolov5l-face.pth
 
 # Face Parsing Model (used by FaceRestoreHelper)
-# This will be downloaded by facelib.utils.face_restoration_helper into weights/facelib.
-RUN wget -O weights/facelib/parsing_parsenet.pth https://github.com/xinntao/facexlib/releases/download/v0.2.2/parsing_parsenet.pth
+# Updated to use jnjaby/KEEP URL and download to checkpoints/facelib_models/
+RUN wget --tries=3 -O checkpoints/facelib_models/parsing_parsenet.pth https://github.com/jnjaby/KEEP/releases/download/v1.0.0/parsing_parsenet.pth
 
-# GMFlow Model (if used by any part of KEEP or its dependencies, not directly in handler but good to have if basicsr needs it)
-# The handler doesn't explicitly load GMFlow, but basicsr might have dependencies.
-# KEEP architecture itself does not seem to use it directly.
-# Let's download it to a common directory for now.
-RUN wget -O checkpoints/other_models/gmflow_sintel-0c07dcb3.pth https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/gmflow_sintel-0c07dcb3.pth
+# GMFlow Model has been removed as it's not directly used by the handler.
 
 # Install the project (basicsr, facelib) in editable mode
 # This makes sure that the custom versions of basicsr and facelib are used.
