@@ -44,7 +44,7 @@ DEFAULT_MODEL_TYPE = 'KEEP' # From inference_keep.py args
 MODELS_CACHE = {}
 
 
-# Placeholder for helper functions that will be integrated
+# Placeholder for helper functions that will be integrated 
 # from inference_keep.py and hugging_face/app.py
 
 def set_realesrgan(model_path=REALESRGAN_MODEL_URL, model_dir=REALESRGAN_MODEL_DIR, tile=DEFAULT_BG_TILE, device='cuda'):
