@@ -493,7 +493,7 @@ if __name__ == "__main__":
         
     sample_job_for_local_test = {
         "input": {
-            "video_url": "https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_1mb.mp4", # Replace with a valid test URL
+            "video_url": "https://zockto.b-cdn.net/videos/230abf25-6281-49df-b4ad-7f9744d73a62.mp4", # Replace with a valid test URL
             # Add other optional parameters for testing if needed
             # "upscale": 1,
             # "bg_upsampler": "realesrgan",
